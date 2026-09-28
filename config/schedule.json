@@ -1,0 +1,10 @@
+{
+  "timezone": "Asia/Seoul",
+  "threads":   { "slots": ["08:30", "12:30", "21:00"], "daily_max": 3 },
+  "instagram": { "slots": ["19:00"], "daily_max": 1 },
+  "blog":      { "slots": ["07:00"], "daily_max": 1 },
+  "random_delay_minutes": 5,
+  "same_product_gap_hours": 6,
+  "max_retries": 3,
+  "retry_delay_minutes": 5
+}

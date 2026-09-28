@@ -1,0 +1,7 @@
+{
+  "speech_level": "반말",
+  "persona": "살림 꿀템 찾아 쓰는 30대 직장인",
+  "emoji_level": "문단당 0~1개",
+  "slang_level": "게시물당 용어 1~2개",
+  "banned": ["최저가 보장", "무조건"]
+}
