@@ -34,16 +34,17 @@ def cmd_generate(args) -> None:
     from generators.copy import CopyGenerator, save_content
 
     manual = {"name": args.name, "price": args.price, "image_url": args.image,
-              "discount_rate": args.discount, "category": args.category}
+              "discount_rate": args.discount, "category": args.category, "memo": args.memo}
     print("● 쿠팡 API 모드" if api_enabled() else "● 수동 모드 (쿠팡 API 키 없음)")
     product = fetch_product(args.url, keyword=args.keyword, manual=manual,
                             affiliate_url=args.affiliate_url, product_id=args.product_id)
     print(f"✔ 상품: {product.name} ({product.price or '가격 미상'}원)\n  추적 링크: {product.affiliate_url}")
 
     gen = CopyGenerator()
-    content, problems = gen.generate(product)
-    path = save_content(product, content, problems, gen.model)
-    print(f"✔ 원고 저장: {path}")
+    content, problems = gen.generate(product, style=args.style)
+    path = save_content(product, content, problems, gen.model, style_cfg=gen.style_cfg,
+                        style=gen.style, photos=args.photos)
+    print(f"✔ 원고 저장: {path}  (스레드 스타일: {gen.style})")
     for p in problems:
         print(f"  ⚠ 검수 필요: {p}")
 
@@ -59,7 +60,9 @@ def cmd_generate(args) -> None:
 
 def cmd_show(args) -> None:
     data = json.loads(Path(args.content).read_text(encoding="utf-8"))
-    print("━━ 스레드 ━━\n" + data["threads"]["body"] + "\n  └ 답글: " + data["threads"]["reply"])
+    th = data["threads"]
+    print(f"━━ 스레드 [{th.get('style')}] · 토픽: {th.get('topic_tag')} · 사진 {len(th.get('photos') or [])}장 ━━")
+    print(th["body"] + (f"\n  └ 답글: {th['reply']}" if th.get("reply") else ""))
     print("\n━━ 인스타그램 ━━\n" + data["instagram"]["caption"])
     blog = data["blog"]
     print(f"\n━━ 블로그 ━━\n제목: {blog['title']}\n" + "\n".join(f"■ {s['heading']}" for s in blog["sections"]))
@@ -80,6 +83,10 @@ def cmd_approve(args) -> None:
     if args.at:
         tz = ZoneInfo(load_json("schedule.json")["timezone"])
         at = datetime.strptime(args.at, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+    if "threads" in channels and data["threads"].get("photos"):
+        from core.config import env
+        if not env("PUBLIC_MEDIA_BASE_URL"):
+            print("⚠ PUBLIC_MEDIA_BASE_URL이 없어 스레드엔 사진 없이 글만 올라갑니다 (README 참고).")
     conn = connect()
     for ch in channels:
         post_id = add_post(conn, data["product"]["product_id"], ch, content_path, scheduled_at=at)
@@ -149,6 +156,9 @@ def main(argv=None) -> None:
     g.add_argument("--price", type=int, help="가격(원)")
     g.add_argument("--image", help="상품 사진 URL 또는 내 PC의 이미지 파일 경로")
     g.add_argument("--discount", type=int); g.add_argument("--category")
+    g.add_argument("--style", help="스레드 말투: 담백후기 / 정보추천 / 호들갑강추 / random (기본: config/threads_style.json)")
+    g.add_argument("--memo", help="직접 써본 느낌 메모. 있으면 체험담으로, 없으면 추천·정보 시점으로 씀")
+    g.add_argument("--photos", nargs="+", help="스레드에 같이 올릴 실제 사진 파일들 (최대 10장)")
     g.add_argument("--no-images", action="store_true"); g.add_argument("--video", action="store_true")
     g.set_defaults(func=cmd_generate)
 

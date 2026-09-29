@@ -100,3 +100,32 @@ def test_blog_package(tmp_path):
     assert body.startswith("고지") and "[이미지: 01.png]" in body and "https://l" in body
     assert (folder / "태그.txt").read_text(encoding="utf-8") == "#욕실 #청소"
     assert (folder / "이미지" / "01.png").exists()
+
+
+def test_threads_public_photo_urls(tmp_path, monkeypatch):
+    from publishers import threads
+    monkeypatch.setattr(threads, "output_dir", lambda: tmp_path)
+    monkeypatch.setenv("PUBLIC_MEDIA_BASE_URL", "https://cdn.example.com/media/")
+    content_path = tmp_path / "20260929_123" / "content.json"
+    urls = threads.public_photo_urls(str(content_path), ["photos/photo_01.jpg", "photos/photo_02.jpg"])
+    assert urls == ["https://cdn.example.com/media/20260929_123/photos/photo_01.jpg",
+                    "https://cdn.example.com/media/20260929_123/photos/photo_02.jpg"]
+    monkeypatch.delenv("PUBLIC_MEDIA_BASE_URL")
+    assert threads.public_photo_urls(str(content_path), ["photos/photo_01.jpg"]) == []
+
+
+def test_threads_carousel_request_flow(monkeypatch):
+    from publishers import threads
+    calls = []
+
+    def fake_post(path, params):
+        calls.append((path, dict(params)))
+        return {"id": f"id{len(calls)}"}
+
+    monkeypatch.setattr(threads, "_post", fake_post)
+    monkeypatch.setattr(threads, "_wait_ready", lambda *a: None)
+    cid = threads._create_container("u", "t", "본문", ["https://a/1.jpg", "https://a/2.jpg"], "상품추천", None)
+    assert [c[1]["media_type"] for c in calls] == ["IMAGE", "IMAGE", "CAROUSEL"]
+    assert calls[0][1]["is_carousel_item"] == "true"
+    assert calls[2][1]["children"] == "id1,id2" and calls[2][1]["topic_tag"] == "상품추천"
+    assert cid == "id3"

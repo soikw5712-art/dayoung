@@ -44,13 +44,31 @@ cp .env.example .env               # 키 입력
 
 원고·카드뉴스·영상·예약 게시는 두 모드 모두 똑같이 자동입니다. 전환할 때 코드 수정은 필요 없습니다.
 
+## 스레드 글 스타일
+
+실제 반응 좋은 스레드 글을 참고해 3가지 말투를 넣어 두었습니다 (`config/threads_style.json`).
+
+| 스타일 | 느낌 | 예시 첫 줄 |
+|---|---|---|
+| `담백후기` | 친구한테 말하듯 2~4문장, 이모지 1개 | "이거 가루로 된 유기농 보리차야." |
+| `정보추천` | 질문으로 시작 → 배경·특징·팁, `~^^` 어미 | "스친이들은 어떤 소금 써?" |
+| `호들갑강추` | 한 줄 한 문장, 들뜬 텐션, 이모지 여러 개 | "여러분 이거 사세효🥵" |
+
+- `--style`로 고르거나, 생략하면 매번 랜덤 (계정 글이 한 가지 말투로만 보이지 않게)
+- 모든 글에 토픽 태그 **상품추천**이 붙고, 해시태그는 쓰지 않음
+- `--memo`에 **직접 써본 느낌**을 적으면 그 내용만 체험담으로 씀. 메모가 없으면 써본 척하지 않고 추천·정보 시점으로 씀
+- `--photos`로 직접 찍은 사진을 넣으면 사진 1장은 이미지, 2장 이상은 캐러셀로 올라감 (`PUBLIC_MEDIA_BASE_URL` 필요, 없으면 글만)
+- 인기 글을 보다가 마음에 드는 말투가 있으면 `threads_style.json`에 스타일을 추가하면 됨
+
 ## 사용법
 
 ```bash
 # 1-a) 수동 모드: 파트너스 사이트에서 만든 링크 + 상품 정보
 #      --image 는 쿠팡 상품 사진 URL 또는 내 PC에 저장한 사진 파일
 python main.py generate "https://link.coupang.com/a/xxxxxx" \
-    --name "욕실 물때 클리너 500ml" --price 8900 --image ./photos/cleaner.jpg --video
+    --name "욕실 물때 클리너 500ml" --price 8900 --image ./photos/cleaner.jpg \
+    --style 담백후기 --memo "뿌리고 5분 두니까 물때 잘 지워짐. 냄새는 좀 셈" \
+    --photos ./photos/1.jpg ./photos/2.jpg --video
 
 # 1-b) API 모드: 상품 링크 + 검색어(상품명 일부)
 python main.py generate "https://www.coupang.com/vp/products/7335597976" --keyword "욕실 물때 클리너" --video

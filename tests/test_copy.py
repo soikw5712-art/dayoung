@@ -1,9 +1,13 @@
+import random
+
+import pytest
+
 from core.config import DISCLOSURE, load_json
-from generators.copy import (BlogPost, BlogSection, CopyGenerator, InstagramPost, ThreadsPost,
-                             apply_disclosure, build_system_prompt, lint_content, save_content)
+from generators.copy import (CopyGenerator, InstagramPost, ThreadsPost, apply_disclosure, build_system_prompt,
+                             build_user_prompt, count_terms, lint_content, pick_style, save_content)
 from tests.fixtures import sample_content, sample_product
 
-LEX, TONE = load_json("threads_lexicon.json"), load_json("tone.json")
+LEX, TONE, STYLE = load_json("threads_lexicon.json"), load_json("tone.json"), load_json("threads_style.json")
 
 
 def test_clean_content_passes_lint():
@@ -20,13 +24,45 @@ def test_lint_catches_rule_violations():
         assert expected in problems
 
 
-def test_system_prompt_includes_lexicon_and_tone():
-    prompt = build_system_prompt(LEX, TONE)
-    assert "스친" in prompt and "스하리" in prompt and TONE["persona"] in prompt
+@pytest.mark.parametrize("style", list(STYLE["styles"]))
+def test_system_prompt_includes_style_example(style):
+    prompt = build_system_prompt(LEX, TONE, STYLE, style)
+    assert "스하리" in prompt and TONE["persona"] in prompt
+    assert STYLE["styles"][style]["example"] in prompt and f"스타일: {style}" in prompt
+
+
+def test_pick_style():
+    assert pick_style(STYLE, "정보추천") == "정보추천"
+    assert pick_style(STYLE, "random", random.Random(1)) in STYLE["styles"]
+    with pytest.raises(ValueError):
+        pick_style(STYLE, "없는스타일")
+
+
+def test_count_terms_prefers_longest():
+    assert count_terms("스친이들 안녕, 스치니 최고, 스친들", list(LEX["use"])) == 3
+
+
+def test_memo_controls_experience_claims():
+    p = sample_product()
+    assert "직접 써본 척하지 말고" in build_user_prompt(p)
+    p.memo = "일주일 써봤는데 냄새가 셈"
+    assert "<memo>" in build_user_prompt(p) and "냄새가 셈" in build_user_prompt(p)
+
+
+def test_hashtag_in_threads_is_flagged():
+    bad = sample_content(threads=ThreadsPost(body="이거 좋아 #살림템", reply_link_text="링크"))
+    assert any("해시태그" in p for p in lint_content(bad, LEX, TONE))
+
+
+def test_link_in_body_option():
+    data = apply_disclosure(sample_content(), sample_product(), {"link_position": "body", "topic_tag": "상품추천"})
+    assert data["threads"]["reply"] is None and data["threads"]["topic_tag"] == "상품추천"
+    assert data["threads"]["body"].index("https://link.coupang.com/a/abc123") < data["threads"]["body"].index(DISCLOSURE)
 
 
 def test_disclosure_on_every_channel():
-    data = apply_disclosure(sample_content(), sample_product())
+    data = apply_disclosure(sample_content(), sample_product(), STYLE, "담백후기")
+    assert data["threads"]["topic_tag"] == "상품추천" and data["threads"]["style"] == "담백후기"
     assert data["threads"]["body"].endswith(DISCLOSURE)
     assert data["threads"]["reply"].endswith("https://link.coupang.com/a/abc123")
     assert DISCLOSURE in data["instagram"]["caption"] and "#욕실청소" in data["instagram"]["caption"]
@@ -60,5 +96,9 @@ def test_generator_retries_once_with_feedback(tmp_path):
     content, problems = gen.generate(sample_product())
     assert problems == [] and len(client.messages.calls) == 2
     assert "스레드 용어" in client.messages.calls[1]["messages"][-1]["content"]
-    path = save_content(sample_product(), content, problems, gen.model, base=tmp_path)
+    photo = tmp_path / "IMG_1.JPG"
+    photo.write_bytes(b"jpg")
+    path = save_content(sample_product(), content, problems, gen.model, base=tmp_path,
+                        style_cfg=STYLE, style=gen.style, photos=[str(photo)])
     assert path.name == "content.json" and path.parent.name.endswith("_7335597976")
+    assert (path.parent / "photos" / "photo_01.jpg").exists()

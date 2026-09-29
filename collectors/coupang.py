@@ -41,6 +41,7 @@ class Product:
     discount_rate: int | None = None
     is_rocket: bool | None = None
     category: str | None = None
+    memo: str | None = None          # 직접 써본 느낌·후기 메모 (있을 때만 체험담으로 씀)
     extra: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -155,7 +156,7 @@ def fetch_product(url: str, keyword: str | None = None, manual: dict | None = No
         url 또는 affiliate_url 로 파트너스 사이트에서 만든 추적 링크를 받고,
         상품 정보는 manual 로 직접 입력받는다.
 
-    manual: {"name", "price", "image_url", "discount_rate", "is_rocket", "category"}
+    manual: {"name", "price", "image_url", "discount_rate", "is_rocket", "category", "memo"}
     """
     manual = {k: v for k, v in (manual or {}).items() if v is not None}
     if manual.get("image_url"):
@@ -187,6 +188,7 @@ def _fetch_manual(url: str, manual: dict, affiliate_url: str | None, product_id:
         discount_rate=manual.get("discount_rate"),
         is_rocket=manual.get("is_rocket"),
         category=manual.get("category"),
+        memo=manual.get("memo"),
         extra={"source": "manual"},
     )
 
@@ -229,5 +231,6 @@ def _fetch_with_api(url: str, keyword: str | None, manual: dict, affiliate_url: 
         discount_rate=info.get("discount_rate"),
         is_rocket=info.get("is_rocket"),
         category=info.get("category"),
+        memo=manual.get("memo"),
         extra={"source": "api"},
     )
