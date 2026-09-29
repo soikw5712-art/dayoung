@@ -13,7 +13,7 @@ from html import escape
 from pathlib import Path
 
 from core.config import env
-from generators.render import BRAND, render_pages
+from generators.render import BRAND, image_src, render_pages
 
 WIDTH, HEIGHT = 1080, 1920
 MIN_SCENE_SEC, MAX_SCENE_SEC = 2.5, 6.0
@@ -52,7 +52,7 @@ def synthesize_speech(text: str, out_path: Path) -> Path | None:
 
 
 def build_frames(data: dict) -> list[str]:
-    image = data["product"].get("image_url")
+    image = image_src(data["product"].get("image_url"))
     photo = f"<div class='photo' style=\"background-image:url('{escape(image)}')\"></div>" if image else ""
     frames = []
     for i, line in enumerate(data["video_script"]):

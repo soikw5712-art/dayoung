@@ -48,3 +48,31 @@ def test_fetch_product_manual_fallback_and_missing_info():
     assert p.name == "수동 입력"
     with pytest.raises(CoupangError):
         fetch_product("https://www.coupang.com/vp/products/5", client=client)
+
+
+@pytest.fixture
+def no_api_keys(monkeypatch):
+    monkeypatch.delenv("COUPANG_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("COUPANG_SECRET_KEY", raising=False)
+
+
+def test_manual_mode_with_affiliate_link(no_api_keys, monkeypatch):
+    monkeypatch.setattr("requests.Session.request", lambda *a, **k: pytest.fail("쿠팡에 요청하면 안 됨"))
+    monkeypatch.setattr("requests.head", lambda *a, **k: pytest.fail("쿠팡에 요청하면 안 됨"))
+    p = fetch_product("https://link.coupang.com/a/bXyZ12", manual={"name": "물때 클리너", "price": 8900})
+    assert (p.product_id, p.affiliate_url, p.extra["source"]) == ("link-bXyZ12", "https://link.coupang.com/a/bXyZ12", "manual")
+
+
+def test_manual_mode_with_product_url_and_affiliate_option(no_api_keys, tmp_path):
+    img = tmp_path / "photo.jpg"
+    img.write_bytes(b"jpg")
+    p = fetch_product("https://www.coupang.com/vp/products/7335597976", affiliate_url="https://link.coupang.com/a/abc",
+                      manual={"name": "물때 클리너", "image_url": str(img)})
+    assert p.product_id == "7335597976" and p.image_url.startswith("file://")
+
+
+def test_manual_mode_errors(no_api_keys):
+    with pytest.raises(CoupangError, match="추적 링크"):
+        fetch_product("https://www.coupang.com/vp/products/1", manual={"name": "x"})
+    with pytest.raises(CoupangError, match="--name"):
+        fetch_product("https://link.coupang.com/a/abc")

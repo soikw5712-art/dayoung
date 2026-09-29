@@ -6,7 +6,7 @@
 
 | 기획서 단계 | 상태 | 파일 |
 |---|---|---|
-| ① 상품 정보 + 딥링크 (파트너스 API) | ✅ | `collectors/coupang.py` |
+| ① 상품 정보 + 추적 링크 | ✅ 수동 모드(지금) / API 모드(키 발급 후 자동 전환) | `collectors/coupang.py` |
 | ② 채널별 원고 생성 (Claude) + 용어 사전·말투 | ✅ 규칙 위반 시 1회 자동 재생성 | `generators/copy.py`, `config/*.json` |
 | ③ 카드뉴스 1080×1350 | ✅ | `generators/image.py` |
 | ④ 숏폼 1080×1920 MP4 | ✅ 무음 + 자막 (TTS는 연동 지점만) | `generators/video.py` |
@@ -27,20 +27,33 @@ cp .env.example .env               # 키 입력
 ```
 
 `.env`에 넣을 것:
-- `ANTHROPIC_API_KEY`: Claude API 키
-- `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`: 쿠팡 파트너스 Open API 키 (파트너스 승인 필요)
+- `ANTHROPIC_API_KEY`: Claude API 키 (**필수**)
+- `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`: 쿠팡 파트너스 Open API 키 — **비워 두면 수동 모드**, 발급받아 채우면 자동으로 API 모드
 - `THREADS_USER_ID`, `THREADS_ACCESS_TOKEN`: Meta 개발자 앱에서 발급한 Threads 장기 토큰
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: 알림용 (없으면 콘솔 출력)
 - `TOKEN_ENCRYPTION_KEY`: 갱신된 토큰을 DB에 암호화 저장하는 키
 
+## 두 가지 모드
+
+| | 수동 모드 (지금) | API 모드 (키 발급 후) |
+|---|---|---|
+| 조건 | `.env`에 쿠팡 키 없음 | `COUPANG_ACCESS_KEY`·`SECRET_KEY` 입력 |
+| 추적 링크 | 파트너스 사이트 **링크 생성**에서 만든 `https://link.coupang.com/a/...` 붙여넣기 | 상품 링크 → 자동 변환 |
+| 상품 정보 | `--name`(필수), `--price`, `--image` 직접 입력 | `--keyword`로 검색 API에서 자동 |
+| 쿠팡 서버 요청 | 없음 | 파트너스 API만 사용 |
+
+원고·카드뉴스·영상·예약 게시는 두 모드 모두 똑같이 자동입니다. 전환할 때 코드 수정은 필요 없습니다.
+
 ## 사용법
 
 ```bash
-# 1) 생성: 링크 + 검색어(상품명 일부) → 원고·카드뉴스 (+ --video 로 영상)
-python main.py generate "https://www.coupang.com/vp/products/7335597976" --keyword "욕실 물때 클리너" --video
+# 1-a) 수동 모드: 파트너스 사이트에서 만든 링크 + 상품 정보
+#      --image 는 쿠팡 상품 사진 URL 또는 내 PC에 저장한 사진 파일
+python main.py generate "https://link.coupang.com/a/xxxxxx" \
+    --name "욕실 물때 클리너 500ml" --price 8900 --image ./photos/cleaner.jpg --video
 
-# 검색으로 못 찾으면 직접 입력
-python main.py generate "<링크>" --name "상품명" --price 8900 --image "https://...jpg"
+# 1-b) API 모드: 상품 링크 + 검색어(상품명 일부)
+python main.py generate "https://www.coupang.com/vp/products/7335597976" --keyword "욕실 물때 클리너" --video
 
 # 2) 검수
 python main.py show output/20260928_7335597976/content.json
@@ -58,7 +71,7 @@ python main.py retry 12             # 실패한 게시물 재배정
 python main.py mark-posted 13 --url https://blog.naver.com/...   # 블로그 직접 발행 후
 ```
 
-> 파트너스 API에는 "상품 ID로 상세 조회"가 없어서, **검색 API 결과에서 같은 상품 ID를 찾는 방식**으로 상품명·가격·이미지를 채웁니다. `--keyword`에 상품명 일부를 넣어 주세요. 쿠팡 페이지를 직접 크롤링하지 않습니다.
+> API 모드: 파트너스 API에는 "상품 ID로 상세 조회"가 없어서, **검색 API 결과에서 같은 상품 ID를 찾는 방식**으로 상품명·가격·이미지를 채웁니다. 어느 모드든 쿠팡 페이지를 직접 크롤링하지 않습니다.
 
 ## 게시 흐름
 

@@ -1,6 +1,9 @@
 """쿠팡 파트너스 SNS 자동화 CLI.
 
-  python main.py generate <쿠팡링크> --keyword "검색어"      # 원고 + 카드뉴스 (+ --video)
+  # 수동 모드 (쿠팡 API 키 없을 때): 파트너스 사이트에서 만든 링크 + 상품 정보 직접 입력
+  python main.py generate https://link.coupang.com/a/xxxx --name "상품명" --price 8900 --image 사진.jpg
+  # API 모드 (.env에 쿠팡 키 있을 때)
+  python main.py generate <쿠팡상품링크> --keyword "검색어"   # 원고 + 카드뉴스 (+ --video)
   python main.py show output/20260928_123/content.json       # 원고 미리보기(검수)
   python main.py approve output/.../content.json --channels threads,blog [--at "2026-10-01 08:30"]
   python main.py list                                         # 게시 대기열
@@ -27,12 +30,14 @@ CHANNELS = ("threads", "instagram", "blog")
 
 
 def cmd_generate(args) -> None:
-    from collectors.coupang import fetch_product
+    from collectors.coupang import api_enabled, fetch_product
     from generators.copy import CopyGenerator, save_content
 
     manual = {"name": args.name, "price": args.price, "image_url": args.image,
               "discount_rate": args.discount, "category": args.category}
-    product = fetch_product(args.url, keyword=args.keyword, manual=manual)
+    print("● 쿠팡 API 모드" if api_enabled() else "● 수동 모드 (쿠팡 API 키 없음)")
+    product = fetch_product(args.url, keyword=args.keyword, manual=manual,
+                            affiliate_url=args.affiliate_url, product_id=args.product_id)
     print(f"✔ 상품: {product.name} ({product.price or '가격 미상'}원)\n  추적 링크: {product.affiliate_url}")
 
     gen = CopyGenerator()
@@ -136,9 +141,13 @@ def main(argv=None) -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("generate", help="쿠팡 링크 → 원고·카드뉴스(·영상) 생성")
-    g.add_argument("url")
-    g.add_argument("--keyword", help="파트너스 검색 API로 상품 정보를 찾을 검색어 (상품명 일부)")
-    g.add_argument("--name"); g.add_argument("--price", type=int); g.add_argument("--image")
+    g.add_argument("url", help="파트너스 추적 링크(link.coupang.com/a/...) 또는 쿠팡 상품 링크")
+    g.add_argument("--affiliate-url", help="파트너스 사이트에서 만든 추적 링크 (url에 상품 링크를 넣었을 때)")
+    g.add_argument("--product-id", help="상품 ID 직접 지정 (선택)")
+    g.add_argument("--keyword", help="[API 모드] 검색 API로 상품 정보를 찾을 검색어 (상품명 일부)")
+    g.add_argument("--name", help="상품명 (수동 모드 필수)")
+    g.add_argument("--price", type=int, help="가격(원)")
+    g.add_argument("--image", help="상품 사진 URL 또는 내 PC의 이미지 파일 경로")
     g.add_argument("--discount", type=int); g.add_argument("--category")
     g.add_argument("--no-images", action="store_true"); g.add_argument("--video", action="store_true")
     g.set_defaults(func=cmd_generate)

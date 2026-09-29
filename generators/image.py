@@ -8,7 +8,7 @@ import json
 from html import escape
 from pathlib import Path
 
-from generators.render import BRAND, render_pages
+from generators.render import BRAND, image_src, render_pages
 
 WIDTH, HEIGHT = 1080, 1350
 
@@ -40,7 +40,7 @@ def _lines(text: str) -> str:
 def build_cards(data: dict) -> list[str]:
     product = data["product"]
     texts: list[str] = data["card_texts"]
-    image = product.get("image_url")
+    image = image_src(product.get("image_url"))
     cards = []
 
     # 1. 표지: 후킹 문구 + 실제 상품 이미지

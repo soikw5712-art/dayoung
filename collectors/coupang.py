@@ -3,6 +3,7 @@
 ※ 쿠팡 페이지를 직접 크롤링하지 않는다 (차단·약관 위반). 모든 정보는 파트너스 API로만 가져온다.
 ※ 파트너스 API에는 "상품 ID로 상세 조회" 엔드포인트가 없어서, 검색 API 결과에서 같은
   상품 ID를 찾는 방식으로 정보를 채운다. 못 찾으면 수동 입력값(--name 등)을 사용한다.
+※ API 키가 없으면 수동 모드: 파트너스 사이트에서 직접 만든 추적 링크 + 직접 입력한 상품 정보 사용.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import json
 import re
 import time
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 import requests
@@ -118,18 +120,81 @@ class CoupangPartnersClient:
         return (data.get("data") or {}).get("productData") or []
 
 
+def api_enabled() -> bool:
+    """.env에 쿠팡 파트너스 API 키가 둘 다 있으면 API 모드."""
+    return bool(env("COUPANG_ACCESS_KEY") and env("COUPANG_SECRET_KEY"))
+
+
+def is_affiliate_link(url: str) -> bool:
+    """파트너스 사이트에서 만든 추적 링크 (https://link.coupang.com/a/xxxx)."""
+    parsed = urlparse(url.strip())
+    return parsed.netloc.endswith("link.coupang.com") and parsed.path.startswith("/a/")
+
+
+def _short_code(url: str) -> str:
+    return urlparse(url.strip()).path.rstrip("/").rsplit("/", 1)[-1]
+
+
+def to_image_src(image: str | None) -> str | None:
+    """이미지 URL은 그대로, 내 PC에 저장한 파일 경로는 file:// 주소로 변환."""
+    if not image or image.startswith(("http://", "https://", "file://", "data:")):
+        return image
+    path = Path(image).expanduser().resolve()
+    if not path.exists():
+        raise CoupangError(f"이미지 파일이 없습니다: {image}")
+    return path.as_uri()
+
+
 def fetch_product(url: str, keyword: str | None = None, manual: dict | None = None,
+                  affiliate_url: str | None = None, product_id: str | None = None,
                   client: CoupangPartnersClient | None = None) -> Product:
-    """상품 링크 → Product. keyword가 있으면 검색 API로 상세 정보를 채운다.
+    """상품 링크 → Product.
+
+    - API 모드 (.env에 쿠팡 키 있음): 딥링크 자동 변환 + keyword로 검색 API에서 상품 정보 채움
+    - 수동 모드 (키 없음): 쿠팡에 어떤 요청도 보내지 않는다.
+        url 또는 affiliate_url 로 파트너스 사이트에서 만든 추적 링크를 받고,
+        상품 정보는 manual 로 직접 입력받는다.
 
     manual: {"name", "price", "image_url", "discount_rate", "is_rocket", "category"}
-            검색으로 못 찾을 때 쓰거나, 검색 결과를 덮어쓸 값.
     """
-    client = client or CoupangPartnersClient()
     manual = {k: v for k, v in (manual or {}).items() if v is not None}
+    if manual.get("image_url"):
+        manual["image_url"] = to_image_src(manual["image_url"])
+    use_api = client is not None or api_enabled()
+    return (_fetch_with_api(url, keyword, manual, affiliate_url, product_id, client or CoupangPartnersClient())
+            if use_api else _fetch_manual(url, manual, affiliate_url, product_id))
 
+
+def _fetch_manual(url: str, manual: dict, affiliate_url: str | None, product_id: str | None) -> Product:
+    if is_affiliate_link(url):
+        affiliate_url = affiliate_url or url
+    if not affiliate_url:
+        raise CoupangError(
+            "쿠팡 API 키가 없어서 수동 모드입니다. 파트너스 사이트(링크 생성)에서 만든 추적 링크\n"
+            "(https://link.coupang.com/a/...)를 링크 자리에 넣거나 --affiliate-url 로 넣어 주세요."
+        )
+    if not manual.get("name"):
+        raise CoupangError("수동 모드에서는 --name 으로 상품명을 입력해야 합니다 (가격 --price, 사진 --image 권장).")
+
+    product_id = product_id or extract_product_id(url) or f"link-{_short_code(affiliate_url)}"
+    return Product(
+        product_id=product_id,
+        name=manual["name"],
+        price=int(manual["price"]) if manual.get("price") is not None else None,
+        image_url=manual.get("image_url"),
+        original_url=url,
+        affiliate_url=affiliate_url,
+        discount_rate=manual.get("discount_rate"),
+        is_rocket=manual.get("is_rocket"),
+        category=manual.get("category"),
+        extra={"source": "manual"},
+    )
+
+
+def _fetch_with_api(url: str, keyword: str | None, manual: dict, affiliate_url: str | None,
+                    product_id: str | None, client: CoupangPartnersClient) -> Product:
     original_url = url
-    product_id = extract_product_id(url)
+    product_id = product_id or extract_product_id(url)
     if product_id is None and "link.coupang.com" in url:
         original_url = resolve_short_link(url)
         product_id = extract_product_id(original_url)
@@ -160,8 +225,9 @@ def fetch_product(url: str, keyword: str | None = None, manual: dict | None = No
         price=int(info["price"]) if info.get("price") is not None else None,
         image_url=info.get("image_url"),
         original_url=original_url,
-        affiliate_url=client.deeplink(original_url),
+        affiliate_url=affiliate_url or client.deeplink(original_url),
         discount_rate=info.get("discount_rate"),
         is_rocket=info.get("is_rocket"),
         category=info.get("category"),
+        extra={"source": "api"},
     )
